@@ -1,2 +1,2 @@
 # DeCUR
-DeCUR: decoupling common and unique representations for multimodal self-supervised learning.
+DeCUR: decoupling common & unique representations for multimodal self-supervised learning.
