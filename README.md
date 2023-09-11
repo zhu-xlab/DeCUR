@@ -11,13 +11,12 @@ PyTorch implementation of [DeCUR](TBD).
 
 ### Pretrained models
 
-| Pretrain dataset | Pretrained model |
+| Pretrain dataset | Model |
 | :---: | :---: |
-| [SSL4EO-S12](https://arxiv.org/abs/2211.07044) | [SAR/MS]() |
-| [GeoNRW](https://ieee-dataport.org/open-access/geonrw) | [RGB/DEM]() |
-| [SUNRGBD](https://rgbd.cs.princeton.edu/) | [RGB/HHA]() |
-
-** Download link to be updated. **
+| [SSL4EO-S12](https://arxiv.org/abs/2211.07044) | [ResNet50-SAR/MS-ep100](https://huggingface.co/wangyi111/DeCUR/resolve/main/rn50_ssl4eo-s12_s1_s2c_decur_ep100.pth) |
+| [GeoNRW](https://ieee-dataport.org/open-access/geonrw) | [ResNet50-RGB/DEM-ep100](https://huggingface.co/wangyi111/DeCUR/resolve/main/rn50_geonrw_rgb_dem_decur_ep100.pth) |
+| [SUNRGBD](https://rgbd.cs.princeton.edu/) | [MiTB2-RGB/HHA-ep200](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb2_sunrgbd_rgb_hha_decur_ep200.pth) |
+| [SUNRGBD](https://rgbd.cs.princeton.edu/) | [MiTB5-RGB/HHA-ep200](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb5_sunrgbd_rgb_hha_decur_ep200.pth) |
 
 
 ### DeCUR Pretraining
