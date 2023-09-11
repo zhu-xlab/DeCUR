@@ -6,7 +6,7 @@
   <img width="500" alt="decur main structure" src="assets/decur_main_structure.png">
 </p>
 
-PyTorch implementation of [DeCUR](TBD).
+PyTorch implementation of [DeCUR]().
 
 
 ### Pretrained models
@@ -65,5 +65,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 
 ### Citation
-
-TBD.
