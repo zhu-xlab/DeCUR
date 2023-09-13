@@ -68,10 +68,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 
 ### Citation
-
+```BibTeX
 @article{wang2023decur,
   title={DeCUR: decoupling common & unique representations for multimodal self-supervision},
   author={Yi Wang and Conrad M Albrecht and Nassim Ait Ali Braham and Chenying Liu and Zhitong Xiong and Xiao Xiang Zhu},
   journal={arXiv preprint arXiv:2309.05300},
   year={2023}
 }
+```
