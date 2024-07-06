@@ -1,22 +1,23 @@
-## DeCUR: decoupling common & unique representations for multimodal self-supervision.
+## Decoupling Common and Unique Representations for Multimodal Self-supervised Learning
 
-![](assets/decur_main_1.pdf)
 
 <p align="center">
-  <img width="500" alt="decur main structure" src="assets/decur_main_structure.png">
+  <img width="800" alt="decur main structure" src="assets/decur_eccv.png">
 </p>
 
-PyTorch implementation of [DeCUR](https://arxiv.org/abs/2309.05300).
+PyTorch implementation of [DeCUR]().
 
 
 ### Pretrained models
 
-| Pretrain dataset | Full model | Backbone only |
-| :---: | :---: | :---: |
-| [SSL4EO-S12](https://arxiv.org/abs/2211.07044) | [ResNet50-SAR/MS-ep100](https://huggingface.co/wangyi111/DeCUR/resolve/main/rn50_ssl4eo-s12_s1_s2c_decur_ep100.pth) | |
-| [GeoNRW](https://ieee-dataport.org/open-access/geonrw) | [ResNet50-RGB/DEM-ep100](https://huggingface.co/wangyi111/DeCUR/resolve/main/rn50_geonrw_rgb_dem_decur_ep100.pth) | |
-| [SUNRGBD](https://rgbd.cs.princeton.edu/) | [MiTB2-RGB/HHA-ep200](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb2_sunrgbd_rgb_hha_decur_ep200.pth) | [MiTB2-RGB](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb2_sunrgbd_backbone_rgb_decur_ep200.pth), [MiTB2-HHA](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb2_sunrgbd_backbone_hha_decur_ep200.pth) |
-| [SUNRGBD](https://rgbd.cs.princeton.edu/) | [MiTB5-RGB/HHA-ep200](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb5_sunrgbd_rgb_hha_decur_ep200.pth) | [MiTB5-RGB](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb5_sunrgbd_backbone_rgb_decur_ep200.pth), [MiTB5-HHA](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb5_sunrgbd_backbone_hha_decur_ep200.pth) |
+| Modality | Pretrain dataset | Deformable Attention  | Full checkpoint | Backbone only |
+| :---: | :---: | :---: | :---: | :---: | 
+SAR/MS | [SSL4EO-S12](https://github.com/zhu-xlab/SSL4EO-S12) | ❌ | [RN50-SAR/MS-ep100](https://huggingface.co/wangyi111/DeCUR/resolve/main/rn50_ssl4eo-s12_s1_s2c_decur_ep100.pth) | |
+SAR/MS | [SSL4EO-S12](https://github.com/zhu-xlab/SSL4EO-S12) | ✅ |  |  |
+RGB/DEM | [GeoNRW](https://ieee-dataport.org/open-access/geonrw) | ❌ | [RN50-RGB/DEM-ep100](https://huggingface.co/wangyi111/DeCUR/resolve/main/rn50_geonrw_rgb_dem_decur_ep100.pth) | |
+RGB/DEM | [GeoNRW](https://ieee-dataport.org/open-access/geonrw) | ✅ |  |  |
+RGB/depth | [SUNRGBD](https://rgbd.cs.princeton.edu/) | ❌ |[MiTB2-RGB/HHA-ep200](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb2_sunrgbd_rgb_hha_decur_ep200.pth) | [MiTB2-RGB](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb2_sunrgbd_backbone_rgb_decur_ep200.pth), [MiTB2-HHA](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb2_sunrgbd_backbone_hha_decur_ep200.pth) |
+RGB/depth | [SUNRGBD](https://rgbd.cs.princeton.edu/) | ❌ |[MiTB5-RGB/HHA-ep200](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb5_sunrgbd_rgb_hha_decur_ep200.pth) | [MiTB5-RGB](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb5_sunrgbd_backbone_rgb_decur_ep200.pth), [MiTB5-HHA](https://huggingface.co/wangyi111/DeCUR/resolve/main/mitb5_sunrgbd_backbone_hha_decur_ep200.pth) |
 
 
 ### DeCUR Pretraining
@@ -69,10 +70,5 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 
 ### Citation
 ```BibTeX
-@article{wang2023decur,
-  title={DeCUR: decoupling common & unique representations for multimodal self-supervision},
-  author={Yi Wang and Conrad M Albrecht and Nassim Ait Ali Braham and Chenying Liu and Zhitong Xiong and Xiao Xiang Zhu},
-  journal={arXiv preprint arXiv:2309.05300},
-  year={2023}
-}
+
 ```
