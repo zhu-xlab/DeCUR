@@ -54,6 +54,7 @@ class SUNRGBDDataset(Dataset):
         
         #rgb = np.array(Image.open(rgb_file).convert("RGB"))
         rgb = cv2.imread(rgb_path)
+        #print(rgb.shape)
         if self.rgb_transform is not None:
             rgb = self.rgb_transform(rgb)
         

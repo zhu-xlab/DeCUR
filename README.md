@@ -22,7 +22,7 @@ RGB/depth | [SUNRGBD](https://rgbd.cs.princeton.edu/) | ❌ |[MiTB5-RGB/HHA-ep20
 
 ### DeCUR Pretraining
 
-Customize your multimodal dataset and your preferred model backbone in `src/datasets/`, `src/models/` and `src/pretrain_mm.py`, and run 
+Clone the repository and install the dependencies based on `requirements.txt`. Customize your multimodal dataset and your preferred model backbone in `src/datasets/`, `src/models/` and `src/pretrain_mm.py`, and run 
 
 ```
 python pretrain_mm.py \
@@ -30,7 +30,8 @@ python pretrain_mm.py \
 --method PRETRAIN_METHOD \
 --data1 /path/to/modality1 \
 --data2 /path/to/modality2 \
---mode MODAL1 MODAL2 
+--mode MODAL1 MODAL2 \
+...
 ```
 
 Apart from DeCUR, we also support multimodal pretraining with [SimCLR](https://arxiv.org/abs/2002.05709), [CLIP](https://arxiv.org/abs/2103.00020), [BarlowTwins](https://arxiv.org/abs/2103.03230v3) and [VICReg](https://arxiv.org/abs/2105.04906).

@@ -1,0 +1,9 @@
+pytorch torchvision torchaudio
+tensorboard
+diffdist
+rasterio
+timm
+einops
+tqdm
+matplotlib
+opencv-torchvision-transforms-yuzhiyang

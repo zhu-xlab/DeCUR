@@ -1,4 +1,4 @@
-# multimodal pretrain with DeCUR
+# multimodal self-supervised learning with DeCUR
 # Adapted from https://github.com/facebookresearch/barlowtwins
 
 from pathlib import Path
@@ -55,7 +55,7 @@ parser.add_argument('--print-freq', default=100, type=int, metavar='N',
                     help='print frequency')
 parser.add_argument('--checkpoint-dir', default='./checkpoint/', type=Path,
                     metavar='DIR', help='path to checkpoint directory')
-parser.add_argument('--lr', default=0.2, type=float)
+parser.add_argument('--lr', default=0.2, type=float) # no effect
 parser.add_argument('--cos', action='store_true', default=False)
 parser.add_argument('--schedule', default=[120,160], nargs='*', type=int)
 
@@ -80,6 +80,8 @@ parser.add_argument("--rank", default=0, type=int, help="""rank of this process:
 parser.add_argument("--local_rank", default=0, type=int,
                     help="this argument is not used and should be ignored")
 parser.add_argument('--seed', type=int, default=42)
+
+parser.add_argument('--rda', action='store_true', default=False) # only available for ResNets and DeCUR
 
 
 def init_distributed_mode(args):
@@ -153,14 +155,19 @@ def main_worker(gpu, args):
     
     ### choose which method for pretraining
     if args.method == 'DeCUR':
+        from models.decur import DeCUR
         model = DeCUR(args).cuda()
     elif args.method == 'BarlowTwins':
+        from models.barlowtwins import BarlowTwins
         model = BarlowTwins(args).cuda()
     elif args.method == 'VICReg':
+        from models.vicreg import VICReg
         model = VICReg(args).cuda()
     elif args.method == 'CLIP':
+        from models.clip import CLIP
         model = CLIP(args).cuda()    
     elif args.method == 'SimCLR':
+        from models.simclr import SimCLR
         model = SimCLR(args).cuda()        
     
     model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -176,9 +183,12 @@ def main_worker(gpu, args):
     
     model = torch.nn.parallel.DistributedDataParallel(model,device_ids=[args.gpu_to_work_on],find_unused_parameters=True)
     
-    optimizer = LARS(parameters, lr=0, weight_decay=args.weight_decay,
-                     weight_decay_filter=True,
-                     lars_adaptation_filter=True)
+    if 'vit' or 'mit' in args.backbone or args.rda:
+        optimizer = torch.optim.AdamW(parameters, args.lr, weight_decay=args.weight_decay)
+    else:
+        optimizer = LARS(parameters, lr=0, weight_decay=args.weight_decay,
+                        weight_decay_filter=True,
+                        lars_adaptation_filter=True)
     
     '''
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
@@ -199,7 +209,7 @@ def main_worker(gpu, args):
     ### choose which dataset for pretraining
     if args.dataset == 'SSL4EO':
         
-        from datasets.SSL4EO.ssl4eo_dataset_lmdb_mm import LMDBDataset
+        from datasets.SSL4EO.ssl4eo_dataset_lmdb_mm_norm import LMDBDataset
         
         train_transforms_s1 = cvtransforms.Compose([
             cvtransforms.RandomResizedCrop(224, scale=(0.2, 1.)),
@@ -235,7 +245,7 @@ def main_worker(gpu, args):
             s2c_transform=TwoCropsTransform_SSL4EO(train_transforms_s2c,season='augment'),
             is_slurm_job=args.is_slurm_job,
             normalize=False,
-            dtype1='float32',
+            dtype1='uint8',
             dtype2='uint8',
             mode=args.mode
         ) 
@@ -252,6 +262,7 @@ def main_worker(gpu, args):
             #cvtransforms.RandomApply([ToGray(1)], p=1.0),
             #cvtransforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
             cvtransforms.RandomHorizontalFlip(),
+            cvtransforms.RandomVerticalFlip(),
             #cvtransforms.RandomApply([RandomChannelDrop(min_n_drop=1, max_n_drop=6)], p=0.5),
             cvtransforms.ToTensor()])
         
@@ -265,6 +276,7 @@ def main_worker(gpu, args):
             cvtransforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
             cvtransforms.RandomApply([Solarize()],p=0.2),
             cvtransforms.RandomHorizontalFlip(),
+            cvtransforms.RandomVerticalFlip(),
             #cvtransforms.RandomApply([RandomChannelDrop(min_n_drop=1, max_n_drop=6)], p=0.5),
             cvtransforms.ToTensor()])    
         
@@ -281,7 +293,7 @@ def main_worker(gpu, args):
         from datasets.SUNRGBD.sunrgbd_dataset import SUNRGBDDataset, random_subset
     
         train_transforms_rgb = cvtransforms.Compose([
-            cvtransforms.RandomResizedCrop((224,224), scale=(0.5, 1.)),
+            cvtransforms.RandomResizedCrop(224, scale=(0.5, 1.)),
             cvtransforms.RandomApply([
                 RandomBrightness(0.4),
                 RandomContrast(0.4)
@@ -296,7 +308,7 @@ def main_worker(gpu, args):
             ])
         
         train_transforms_dsm = cvtransforms.Compose([
-            cvtransforms.RandomResizedCrop((224,224), scale=(0.5, 1.)),
+            cvtransforms.RandomResizedCrop(224, scale=(0.5, 1.)),
             cvtransforms.RandomHorizontalFlip(),
             #cvtransforms.RandomVerticalFlip(),
             cvtransforms.ToTensor(),
@@ -360,9 +372,9 @@ def main_worker(gpu, args):
                                  lr_biases=optimizer.param_groups[1]['lr'],
                                  #lr=optimizer.param_groups['lr'],
                                  loss=loss.item(),
-                                 #loss1=loss1.item(),
-                                 #loss2=loss2.item(),
-                                 #loss12=loss12.item(),
+                                 loss1=loss1.item(),
+                                 loss2=loss2.item(),
+                                 loss12=loss12.item(),
                                  #on_diag12_c=on_diag12_c.item(),
                                  time=int(time.time() - start_time))
                     print(json.dumps(stats))
@@ -395,13 +407,6 @@ def handle_sigusr1(signum, frame):
 
 def handle_sigterm(signum, frame):
     pass
-
-
-def off_diagonal(x):
-    # return a flattened view of the off-diagonal elements of a square matrix
-    n, m = x.shape
-    assert n == m
-    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
 class LARS(optim.Optimizer):
@@ -487,384 +492,6 @@ class TwoCropsTransform:
         return [q, k]
 
 
-
-
-''' self-supervised methods '''
-
-''' DeCUR '''
-class DeCUR(nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        self.args = args
-        if args.backbone == 'resnet50':
-            self.backbone_1 = torchvision.models.resnet50(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet50(zero_init_residual=True)
-        elif args.backbone == 'resnet18':
-            self.backbone_1 = torchvision.models.resnet18(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet18(zero_init_residual=True)
-        elif args.backbone == 'mit_b2':
-            from models.segformer.encoders.segformer import mit_b2
-            self.backbone_1 = mit_b2(num_classes=2048)
-            self.backbone_2 = mit_b2(num_classes=2048)
-            self.backbone_1.init_weights(pretrained=args.pretrained)
-            self.backbone_2.init_weights(pretrained=args.pretrained)
-        elif args.backbone == 'mit_b5':
-            from models.segformer.encoders.segformer import mit_b5
-            self.backbone_1 = mit_b5(num_classes=2048)
-            self.backbone_2 = mit_b5(num_classes=2048)
-            self.backbone_1.init_weights(pretrained=args.pretrained)
-            self.backbone_2.init_weights(pretrained=args.pretrained)
-                        
-        if args.mode==['s1','s2c']:
-            self.backbone_1.conv1 = torch.nn.Conv2d(2, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)            
-            self.backbone_2.conv1 = torch.nn.Conv2d(13, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)            
-            self.backbone_1.fc = nn.Identity()
-            self.backbone_2.fc = nn.Identity()
-
-        # projector
-        if args.backbone == 'resnet50':
-            sizes = [2048] + list(map(int, args.projector.split('-')))
-        elif args.backbone == 'resnet18':
-            sizes = [512] + list(map(int, args.projector.split('-')))
-        layers = []
-        for i in range(len(sizes) - 2):
-            layers.append(nn.Linear(sizes[i], sizes[i + 1], bias=False))
-            layers.append(nn.BatchNorm1d(sizes[i + 1]))
-            layers.append(nn.ReLU(inplace=True))
-        layers.append(nn.Linear(sizes[-2], sizes[-1], bias=False))
-        self.projector1 = nn.Sequential(*layers)
-        self.projector2 = nn.Sequential(*layers)
-
-        # normalization layer for the representations z1 and z2
-        self.bn = nn.BatchNorm1d(sizes[-1], affine=False)
-
-    def bt_loss_cross(self, z1, z2):
-        # empirical cross-correlation matrix
-        c = self.bn(z1).T @ self.bn(z2)
-
-        # sum the cross-correlation matrix between all gpus
-        c.div_(self.args.batch_size*4)
-        torch.distributed.all_reduce(c)
-
-        dim_c = self.args.dim_common
-        c_c = c[:dim_c,:dim_c]
-        c_u = c[dim_c:,dim_c:]
-
-        on_diag_c = torch.diagonal(c_c).add_(-1).pow_(2).sum()
-        off_diag_c = off_diagonal(c_c).pow_(2).sum()
-        
-        on_diag_u = torch.diagonal(c_u).pow_(2).sum()
-        off_diag_u = off_diagonal(c_u).pow_(2).sum()
-        
-        loss_c = on_diag_c + self.args.lambd * off_diag_c
-        loss_u = on_diag_u + self.args.lambd * off_diag_u
-        
-        return loss_c,on_diag_c,off_diag_c,loss_u,on_diag_u,off_diag_u   
-
-
-    def bt_loss_single(self, z1, z2):
-        # empirical cross-correlation matrix
-        c = self.bn(z1).T @ self.bn(z2)
-
-        # sum the cross-correlation matrix between all gpus
-        c.div_(self.args.batch_size*4)
-        torch.distributed.all_reduce(c)
-
-        on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
-        off_diag = off_diagonal(c).pow_(2).sum()
-        loss = on_diag + self.args.lambd * off_diag
-        return loss,on_diag,off_diag
-
-
-    def forward(self, y1_1,y1_2,y2_1,y2_2):
-        z1_1 = self.projector1(self.backbone_1(y1_1))
-        z1_2 = self.projector1(self.backbone_1(y1_2))
-        z2_1 = self.projector2(self.backbone_2(y2_1))
-        z2_2 = self.projector2(self.backbone_2(y2_2))        
-
-        loss1, on_diag1, off_diag1 = self.bt_loss_single(z1_1,z1_2)
-        loss2, on_diag2, off_diag2 = self.bt_loss_single(z2_1,z2_2)        
-        loss12_c, on_diag12_c, off_diag12_c, loss12_u, on_diag12_u, off_diag12_u = self.bt_loss_cross(z1_1,z2_1)
-        loss12 = (loss12_c + loss12_u) / 2.0
-
-        return loss1,loss2,loss12,on_diag12_c
-
-
-''' BarlowTwins '''
-class BarlowTwins(nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        self.args = args
-        if args.backbone == 'resnet50':
-            self.backbone_1 = torchvision.models.resnet50(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet50(zero_init_residual=True)
-        elif args.backbone == 'resnet18':
-            self.backbone_1 = torchvision.models.resnet18(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet18(zero_init_residual=True)
-            
-        if args.mode==['s1','s2c']:
-            self.backbone_1.conv1 = torch.nn.Conv2d(2, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)            
-            self.backbone_2.conv1 = torch.nn.Conv2d(13, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            
-            self.backbone_1.fc = nn.Identity()
-            self.backbone_2.fc = nn.Identity()
-
-        # projector
-        if args.backbone == 'resnet50':
-            sizes = [2048] + list(map(int, args.projector.split('-')))
-        elif args.backbone == 'resnet18':
-            sizes = [512] + list(map(int, args.projector.split('-')))
-        layers = []
-        for i in range(len(sizes) - 2):
-            layers.append(nn.Linear(sizes[i], sizes[i + 1], bias=False))
-            layers.append(nn.BatchNorm1d(sizes[i + 1]))
-            layers.append(nn.ReLU(inplace=True))
-        layers.append(nn.Linear(sizes[-2], sizes[-1], bias=False))
-        self.projector1 = nn.Sequential(*layers)
-        self.projector2 = nn.Sequential(*layers)
-
-        # normalization layer for the representations z1 and z2
-        self.bn = nn.BatchNorm1d(sizes[-1], affine=False)
-
-    def forward(self, y1, y2):
-        z1 = self.projector1(self.backbone_1(y1))
-        z2 = self.projector2(self.backbone_2(y2))
-
-        # empirical cross-correlation matrix
-        c = self.bn(z1).T @ self.bn(z2)
-
-        # sum the cross-correlation matrix between all gpus
-        c.div_(self.args.batch_size*4)
-        torch.distributed.all_reduce(c)
-
-        on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
-        off_diag = off_diagonal(c).pow_(2).sum()
-        loss = on_diag + self.args.lambd * off_diag
-        return loss#,on_diag,off_diag
-
-
-''' VICReg '''
-class VICReg(nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        self.args = args
-        if args.backbone == 'resnet50':
-            self.backbone_1 = torchvision.models.resnet50(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet50(zero_init_residual=True)
-        elif args.backbone == 'resnet18':
-            self.backbone_1 = torchvision.models.resnet18(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet18(zero_init_residual=True)
-            
-        if args.mode==['s1','s2c']:
-            self.backbone_1.conv1 = torch.nn.Conv2d(2, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)            
-            self.backbone_2.conv1 = torch.nn.Conv2d(13, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            
-            self.backbone_1.fc = nn.Identity()
-            self.backbone_2.fc = nn.Identity()
-
-        # projector
-        if args.backbone == 'resnet50':
-            sizes = [2048] + list(map(int, args.projector.split('-')))
-        elif args.backbone == 'resnet18':
-            sizes = [512] + list(map(int, args.projector.split('-')))
-        layers = []
-        for i in range(len(sizes) - 2):
-            layers.append(nn.Linear(sizes[i], sizes[i + 1], bias=False))
-            layers.append(nn.BatchNorm1d(sizes[i + 1]))
-            layers.append(nn.ReLU(inplace=True))
-        layers.append(nn.Linear(sizes[-2], sizes[-1], bias=False))
-        self.projector1 = nn.Sequential(*layers)
-        self.projector2 = nn.Sequential(*layers)
-        
-        self.num_features = sizes[-1]
-
-    def forward(self, x, y):
-        x = self.projector1(self.backbone_1(x))
-        y = self.projector2(self.backbone_2(y))
-
-        repr_loss = F.mse_loss(x, y)
-
-        x = torch.cat(FullGatherLayer.apply(x), dim=0)
-        y = torch.cat(FullGatherLayer.apply(y), dim=0)
-        x = x - x.mean(dim=0)
-        y = y - y.mean(dim=0)
-
-        std_x = torch.sqrt(x.var(dim=0) + 0.0001)
-        std_y = torch.sqrt(y.var(dim=0) + 0.0001)
-        std_loss = torch.mean(F.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
-
-        cov_x = (x.T @ x) / (self.args.batch_size - 1)
-        cov_y = (y.T @ y) / (self.args.batch_size - 1)
-        cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
-            self.num_features
-        ) + off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
-
-        loss = (
-            self.args.sim_coeff * repr_loss
-            + self.args.std_coeff * std_loss
-            + self.args.cov_coeff * cov_loss
-        )
-        return loss        
-        
-class FullGatherLayer(torch.autograd.Function):
-    """
-    Gather tensors from all process and support backward propagation
-    for the gradients across processes.
-    """
-
-    @staticmethod
-    def forward(ctx, x):
-        output = [torch.zeros_like(x) for _ in range(dist.get_world_size())]
-        dist.all_gather(output, x)
-        return tuple(output)
-
-    @staticmethod
-    def backward(ctx, *grads):
-        all_gradients = torch.stack(grads)
-        dist.all_reduce(all_gradients)
-        return all_gradients[dist.get_rank()]        
-
-
-''' CLIP '''
-class CLIP(nn.Module):
-
-    LARGE_NUMBER = 1e9
-
-    def __init__(self,args):
-        super().__init__()
-        self.args = args
-        if args.backbone == 'resnet50':
-            self.backbone_1 = torchvision.models.resnet50(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet50(zero_init_residual=True)
-        elif args.backbone == 'resnet18':
-            self.backbone_1 = torchvision.models.resnet18(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet18(zero_init_residual=True)
-            
-        if args.mode==['s1','s2c']:
-            self.backbone_1.conv1 = torch.nn.Conv2d(2, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)            
-            self.backbone_2.conv1 = torch.nn.Conv2d(13, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            
-            self.backbone_1.fc = nn.Identity()
-            self.backbone_2.fc = nn.Identity()
-                    
-            self.projector1 = nn.Sequential(nn.Linear(2048, 512), nn.BatchNorm1d(512), nn.ReLU(), nn.Linear(512, 128), nn.BatchNorm1d(128))
-            self.projector2 = nn.Sequential(nn.Linear(2048, 512), nn.BatchNorm1d(512), nn.ReLU(), nn.Linear(512, 128), nn.BatchNorm1d(128))
-            
-        self.tau = 1.0
-        self.multiplier = 2
-        self.distributed = True
-        self.temperature = 1.0               
-        
-    def forward(self,x1,x2):
-        z1 = self.projector1(self.backbone_1(x1))
-        z2 = self.projector2(self.backbone_2(x2))        
-        z = torch.cat((z1,z2),dim=0)
-
-        n = z.shape[0]
-        assert n % self.multiplier == 0
-        
-        z = F.normalize(z, p=2, dim=1) / np.sqrt(self.tau)
-        
-        if self.distributed:
-            z_list = [torch.zeros_like(z) for _ in range(dist.get_world_size())]
-            # all_gather fills the list as [<proc0>, <proc1>, ...]
-            # TODO: try to rewrite it with pytorch official tools
-            z_list = diffdist.functional.all_gather(z_list, z)
-            # split it into [<proc0_aug0>, <proc0_aug1>, ..., <proc0_aug(m-1)>, <proc1_aug(m-1)>, ...]
-            z_list = [chunk for x in z_list for chunk in x.chunk(self.multiplier)]
-            # sort it to [<proc0_aug0>, <proc1_aug0>, ...] that simply means [<batch_aug0>, <batch_aug1>, ...] as expected below
-            z_sorted = []
-            for m in range(self.multiplier):
-                for i in range(dist.get_world_size()):
-                    z_sorted.append(z_list[i * self.multiplier + m])
-            z = torch.cat(z_sorted, dim=0)
-            n = z.shape[0]
-        
-        z1_new = z[:n//2]
-        z2_new = z[n//2:]
-        
-        logits = (z1_new @ z2_new.T) / self.temperature
-        targets = torch.arange(n//2).cuda()
-        loss = torch.nn.CrossEntropyLoss()(logits, targets)
-                     
-        return loss
-
-
-''' SimCLR '''
-class SimCLR(nn.Module):
-
-    LARGE_NUMBER = 1e9
-
-    def __init__(self,args):
-        super().__init__()
-        self.args = args
-        if args.backbone == 'resnet50':
-            self.backbone_1 = torchvision.models.resnet50(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet50(zero_init_residual=True)
-        elif args.backbone == 'resnet18':
-            self.backbone_1 = torchvision.models.resnet18(zero_init_residual=True)
-            self.backbone_2 = torchvision.models.resnet18(zero_init_residual=True)
-            
-        if args.mode==['s1','s2c']:
-            self.backbone_1.conv1 = torch.nn.Conv2d(2, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)            
-            self.backbone_2.conv1 = torch.nn.Conv2d(13, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            
-            self.backbone_1.fc = nn.Identity()
-            self.backbone_2.fc = nn.Identity()
-                    
-            self.projector1 = nn.Sequential(nn.Linear(2048, 512), nn.BatchNorm1d(512), nn.ReLU(), nn.Linear(512, 128), nn.BatchNorm1d(128))
-            self.projector2 = nn.Sequential(nn.Linear(2048, 512), nn.BatchNorm1d(512), nn.ReLU(), nn.Linear(512, 128), nn.BatchNorm1d(128))
-            
-        self.tau = 1.0
-        self.multiplier = 2
-        self.distributed = True
-        self.norm = 1.0            
-        
-    def forward(self,x1,x2):
-        z1 = self.projector1(self.backbone_1(x1))
-        z2 = self.projector2(self.backbone_2(x2))        
-        z = torch.cat((z1,z2),dim=0)
-
-        n = z.shape[0]
-        assert n % self.multiplier == 0
-        
-        z = F.normalize(z, p=2, dim=1) / np.sqrt(self.tau)
-        
-        if self.distributed:
-            z_list = [torch.zeros_like(z) for _ in range(dist.get_world_size())]
-            # all_gather fills the list as [<proc0>, <proc1>, ...]
-            # TODO: try to rewrite it with pytorch official tools
-            z_list = diffdist.functional.all_gather(z_list, z)
-            # split it into [<proc0_aug0>, <proc0_aug1>, ..., <proc0_aug(m-1)>, <proc1_aug(m-1)>, ...]
-            z_list = [chunk for x in z_list for chunk in x.chunk(self.multiplier)]
-            # sort it to [<proc0_aug0>, <proc1_aug0>, ...] that simply means [<batch_aug0>, <batch_aug1>, ...] as expected below
-            z_sorted = []
-            for m in range(self.multiplier):
-                for i in range(dist.get_world_size()):
-                    z_sorted.append(z_list[i * self.multiplier + m])
-            z = torch.cat(z_sorted, dim=0)
-            n = z.shape[0]
-        
-        logits = z @ z.t()
-        logits[np.arange(n), np.arange(n)] = -1e4
-
-        logprob = F.log_softmax(logits, dim=1)
-
-        # choose all positive objects for an example, for i it would be (i + k * n/m), where k=0...(m-1)
-        m = self.multiplier
-        labels = (np.repeat(np.arange(n), m) + np.tile(np.arange(m) * n//m, n)) % n
-        # remove labels pointet to itself, i.e. (i, i)
-        labels = labels.reshape(n, m)[:, 1:].reshape(-1)
-
-        # TODO: maybe different terms for each process should only be computed here...
-        loss = -logprob[np.repeat(np.arange(n), m-1), labels].sum() / n / (m-1) / self.norm
-
-        # zero the probability of identical pairs
-        pred = logprob.data.clone()
-        pred[np.arange(n), np.arange(n)] = -1e4
-        acc = accuracy(pred, torch.LongTensor(labels.reshape(n, m-1)).to(logprob.device), m-1)                
-    
-        return loss#, acc.sum()/(acc.shape[0])
 
 
 if __name__ == '__main__':
