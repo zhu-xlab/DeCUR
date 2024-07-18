@@ -40,18 +40,20 @@ If you are using distributed training with slurm, we provide some example job su
 
 ### Transfer Learning
 
+*See the corresponding `readme.md` in the `datasets` folders of the SAR-optical/RGB-DEM transfer learning tasks for dataset preparation instructions. To be updated.*
+
 Multilabel scene classification with ResNet50 on [BigEarthNet-MM](https://arxiv.org/abs/2105.07921):
 
 ```
 $ cd src/transfer_classification_BE
-$ python linear_BE.py --backbone resnet50 --mode s1 s2 --pretrained /path/to/pretrained_weights
+$ python linear_BE_resnet.py --backbone resnet50 --mode s1 s2 --pretrained /path/to/pretrained_weights ...
 ```
 
-Semantic segmentation with [FCN](https://arxiv.org/abs/1411.4038) on [GeoNRW](https://ieee-dataport.org/open-access/geonrw):
+Semantic segmentation with simple [FCN](https://arxiv.org/abs/1411.4038) on [GeoNRW](https://ieee-dataport.org/open-access/geonrw):
 
 ```
 $ cd src/transfer_segmentation_GEONRW
-$ python GeoNRW_MM_FCN_RN50.py --backbone resnet50 --mode RGB DSM mask --pretrained /path/to/pretrained_weights
+$ python GeoNRW_MM_FCN_RN50.py --backbone resnet50 --mode RGB DSM mask --pretrained /path/to/pretrained_weights ...
 ```
 
 Semantic segmentation with [CMX](https://arxiv.org/abs/2203.04838) on [SUNRGBD](https://rgbd.cs.princeton.edu/) and [NYUDv2](https://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html): 
@@ -60,7 +62,7 @@ Semantic segmentation with [CMX](https://arxiv.org/abs/2203.04838) on [SUNRGBD](
 $ cd src/transfer_segmentation_SUNRGBD
 $ python convert_weights.py # convert pretrained weights to CMX format
 
-Then please refer to https://github.com/huaaaliu/RGBX_Semantic_Segmentation.
+Then refer to https://github.com/huaaaliu/RGBX_Semantic_Segmentation for dataset preparation, training etc.
 Simply load the pretrained weights from our pretrained models. 
 ```
 
