@@ -3,3 +3,5 @@
 **/__pycache__/*
 **/srun_outputs/*
 **/checkpoints/*
+src/pretrain/utils/*.ipynb
+src/transfer_segmentation_GEONRW/

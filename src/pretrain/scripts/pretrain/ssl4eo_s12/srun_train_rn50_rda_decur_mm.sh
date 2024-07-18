@@ -58,4 +58,4 @@ srun python -u pretrain_mm.py \
 --cos \
 --dim_common 7168 \
 --rda \
-#--resume /p/project/hai_dm4eo/wang_yi/decur/src/pretrain/checkpoints/late_fusion_2p2/B2B13_bt_decu_rn50_prj8192/checkpoint_0061.pth
+--resume /p/project1/hai_ssl4eo/wang_yi/decur/DeCUR/src/pretrain/checkpoints/B2B13_ssl4eo_decur_rn50_rda/checkpoint_0063.pth

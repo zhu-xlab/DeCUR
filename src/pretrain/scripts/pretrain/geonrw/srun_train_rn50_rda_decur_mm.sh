@@ -4,8 +4,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=4
-#SBATCH --output=srun_outputs/B3B1_geonrw_train_rn50_decur_%j.out
-#SBATCH --error=srun_outputs/B3B1_geonrw_train_rn50_decur_%j.err
+#SBATCH --output=srun_outputs/B3B1_geonrw_train_rn50_rda_decur_%j.out
+#SBATCH --error=srun_outputs/B3B1_geonrw_train_rn50_rda_decur_%j.err
 #SBATCH --time=10:00:00
 #SBATCH --job-name=lf2_bt_rn50
 #SBATCH --gres=gpu:4
@@ -45,9 +45,9 @@ srun python -u pretrain_mm.py \
 --epochs 100 \
 --batch-size 64 \
 --workers 10 \
---learning-rate-weights 0.2 \
---learning-rate-biases 0.0048 \
---weight-decay 1e-6 \
+--learning-rate-weights 1e-4 \
+--learning-rate-biases 1e-4 \
+--weight-decay 0.01 \
 --lambd 0.0051 \
 --projector 8192-8192-8192 \
 --print-freq 100 \
@@ -56,5 +56,5 @@ srun python -u pretrain_mm.py \
 --dist_url $dist_url \
 --cos \
 --dim_common 6144 \
-#--rda \
+--rda \
 #--resume /p/project/hai_dm4eo/wang_yi/ssl4eo-mm-v3/src/pretrain/checkpoints/geonrw/B3B1_lf2_bt_decu_rn50/checkpoint_0096.pth

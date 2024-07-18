@@ -81,6 +81,7 @@ parser.add_argument("--local_rank", default=0, type=int,
                     help="this argument is not used and should be ignored")
 parser.add_argument('--seed', type=int, default=42)
 
+# deformable attention (optional)
 parser.add_argument('--rda', action='store_true', default=False) # only available for ResNets and DeCUR
 
 
@@ -372,9 +373,9 @@ def main_worker(gpu, args):
                                  lr_biases=optimizer.param_groups[1]['lr'],
                                  #lr=optimizer.param_groups['lr'],
                                  loss=loss.item(),
-                                 loss1=loss1.item(),
-                                 loss2=loss2.item(),
-                                 loss12=loss12.item(),
+                                 #loss1=loss1.item(),
+                                 #loss2=loss2.item(),
+                                 #loss12=loss12.item(),
                                  #on_diag12_c=on_diag12_c.item(),
                                  time=int(time.time() - start_time))
                     print(json.dumps(stats))

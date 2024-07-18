@@ -8,18 +8,8 @@ import pdb
 #import kornia as K
 
 ### band statistics: mean & std
-# calculated from 50k subset
-S1_MEAN = [-12.54847273, -20.19237134]
-S1_STD = [5.25697717, 5.91150917]
-
-S2A_MEAN = [752.40087073, 884.29673756, 1144.16202635, 1297.47289228, 1624.90992062, 2194.6423161, 2422.21248945, 2517.76053101, 2581.64687018, 2645.51888987, 2368.51236873, 1805.06846033]
-
-S2A_STD = [1108.02887453, 1155.15170768, 1183.6292542, 1368.11351514, 1370.265037, 1355.55390699, 1416.51487101, 1474.78900051, 1439.3086061, 1582.28010962, 1455.52084939, 1343.48379601]
-
-S2C_MEAN = [1605.57504906, 1390.78157673, 1314.8729939, 1363.52445545, 1549.44374991, 2091.74883118, 2371.7172463, 2299.90463006, 2560.29504086, 830.06605044, 22.10351321, 2177.07172323, 1524.06546312]
-
-S2C_STD = [786.78685367, 850.34818441, 875.06484736, 1138.84957046, 1122.17775652, 1161.59187054, 1274.39184232, 1248.42891965, 1345.52684884, 577.31607053, 51.15431158, 1336.09932639, 1136.53823676]
-
+S1_MEAN = [-12.59, -20.26]
+S1_STD = [5.26, 5.91]
 
 def normalize(img, mean, std):
     min_value = mean - 2 * std
@@ -29,7 +19,6 @@ def normalize(img, mean, std):
     return img
     
     
-
 class Subset(Dataset):
 
     def __init__(self, dataset, indices):
@@ -86,21 +75,19 @@ class InfiniteDataLoader(DataLoader):
             yield next(self.iterator)
 
 
-def make_lmdb(dataset, lmdb_file, num_workers=6,mode=['s1','s2a','s2c']):
+def make_lmdb(dataset, lmdb_file, num_workers=6,mode=['s1','s2c']):
     loader = InfiniteDataLoader(dataset, num_workers=num_workers, collate_fn=lambda x: x[0])
     #env = lmdb.open(lmdb_file, map_size=1099511627776,writemap=True) # continuously write to disk
     env = lmdb.open(lmdb_file, map_size=1099511627776)
     txn = env.begin(write=True)
-    for index, (s1, s2a, s2c) in tqdm(enumerate(loader), total=len(dataset), desc='Creating LMDB'):
+    for index, (s1, s2c) in tqdm(enumerate(loader), total=len(dataset), desc='Creating LMDB'):
         if 's1' in mode:
             sample_s1 = np.array(s1)
-        if 's2a' in mode:
-            sample_s2a = np.array(s2a)
         if 's2c' in mode:
             sample_s2c = np.array(s2c)
             
-        if mode==['s1','s2a','s2c']:
-            obj = (sample_s1.tobytes(), sample_s1.shape, sample_s2a.tobytes(), sample_s2a.shape, sample_s2c.tobytes(), sample_s2c.shape)
+        if mode==['s1','s2c']:
+            obj = (sample_s1.tobytes(), sample_s1.shape, sample_s2c.tobytes(), sample_s2c.shape)
         elif mode==['s1']:
             obj = (sample_s1.tobytes(), sample_s1.shape)
         elif mode==['s2a']:
@@ -225,169 +212,3 @@ class LMDBDataset(Dataset):
     
     def __len__(self):
         return self.length
-
-    
-    
-    
-    
-    
-if __name__ == '__main__':
-
-    
-    from cvtorchvision import cvtransforms
-    import numpy as np
-    import torch
-    import random
-    from PIL import ImageFilter
-    import random
-    import cv2
-
-    class TwoCropsTransform:
-        """Take two random crops of one image as the query and key."""
-
-        def __init__(self, base_transform, season='fixed'):
-            self.base_transform = base_transform
-            self.season = season
-
-        def __call__(self, x):
-
-            if self.season=='augment':
-                season1 = np.random.choice([0,1,2,3])
-                season2 = np.random.choice([0,1,2,3])
-            elif self.season=='fixed':
-                np.random.seed(42)
-                season1 = np.random.choice([0,1,2,3])
-                season2 = season1
-            elif self.season=='random':
-                season1 = np.random.choice([0,1,2,3])
-                season2 = season1
-                
-            x1 = np.transpose(x[season1,:,:,:],(1,2,0))
-            x2 = np.transpose(x[season2,:,:,:],(1,2,0))
-
-            q = self.base_transform(x1)
-            k = self.base_transform(x2)
-
-            return [q, k]
-
-
-    class GaussianBlur(object):
-        """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
-
-        def __init__(self, sigma=[.1, 2.]):
-            self.sigma = sigma
-
-        def __call__(self, x):
-            sigma = random.uniform(self.sigma[0], self.sigma[1])
-            #x = x.filter(ImageFilter.GaussianBlur(radius=sigma))
-            #return x
-            return cv2.GaussianBlur(x,(0,0),sigma)
-
-
-    class RandomBrightness(object):
-        """ Random Brightness """
-
-        def __init__(self, brightness=0.4):
-            self.brightness = brightness
-
-        def __call__(self, sample):
-            s = np.random.uniform(max(0, 1 - self.brightness), 1 + self.brightness)
-            img = sample * s
-
-            return img
-
-    class RandomContrast(object):
-        """ Random Contrast """
-
-        def __init__(self, contrast=0.4):
-            self.contrast = contrast
-
-        def __call__(self, sample):
-            s = np.random.uniform(max(0, 1 - self.contrast), 1 + self.contrast)
-            mean = np.mean(sample, axis=(0, 1))
-
-            return ((sample - mean) * s + mean)
-
-    class ToGray(object):
-        def __init__(self, out_channels):
-            self.out_channels = out_channels
-        def __call__(self,sample):
-            gray_img = np.mean(sample, axis=-1)
-            gray_img = np.tile(gray_img, (self.out_channels, 1, 1))
-            gray_img = np.transpose(gray_img, [1, 2, 0])
-            return gray_img
-
-
-    class RandomChannelDrop(object):
-        """ Random Channel Drop """
-
-        def __init__(self, min_n_drop=1, max_n_drop=8):
-            self.min_n_drop = min_n_drop
-            self.max_n_drop = max_n_drop
-
-        def __call__(self, sample):
-            n_channels = random.randint(self.min_n_drop, self.max_n_drop)
-            channels = np.random.choice(range(sample.shape[0]), size=n_channels, replace=False)
-
-            for c in channels:
-                sample[c, :, :] = 0        
-            return sample
-
-    
-    train_transforms_s1 = cvtransforms.Compose([
-        cvtransforms.RandomResizedCrop(112, scale=(0.2, 1.)),
-        cvtransforms.RandomApply([
-            RandomBrightness(0.4),
-            RandomContrast(0.4)
-        ], p=0.8),
-        cvtransforms.RandomApply([ToGray(2)], p=0.2),
-        cvtransforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
-        cvtransforms.RandomHorizontalFlip(),
-        #cvtransforms.RandomApply([RandomChannelDrop(min_n_drop=1, max_n_drop=6)], p=0.5),        
-        cvtransforms.ToTensor()])
-    train_transforms_s2a = cvtransforms.Compose([
-        cvtransforms.RandomResizedCrop(112, scale=(0.2, 1.)),
-        cvtransforms.RandomApply([
-            RandomBrightness(0.4),
-            RandomContrast(0.4)
-        ], p=0.8),
-        cvtransforms.RandomApply([ToGray(12)], p=0.2),
-        cvtransforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
-        cvtransforms.RandomHorizontalFlip(),
-        cvtransforms.RandomApply([RandomChannelDrop(min_n_drop=1, max_n_drop=6)], p=0.5),        
-        cvtransforms.ToTensor()])
-    train_transforms_s2c = cvtransforms.Compose([
-        cvtransforms.RandomResizedCrop(112, scale=(0.2, 1.)),
-        cvtransforms.RandomApply([
-            RandomBrightness(0.4),
-            RandomContrast(0.4)
-        ], p=0.8),
-        cvtransforms.RandomApply([ToGray(13)], p=0.2),
-        cvtransforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
-        cvtransforms.RandomHorizontalFlip(),
-        cvtransforms.RandomApply([RandomChannelDrop(min_n_drop=1, max_n_drop=6)], p=0.5),        
-        cvtransforms.ToTensor()
-    ])
-    
-    
-    train_dataset = LMDBDataset(
-        #lmdb_file='/p/scratch/hai_dm4eo/wang_yi/data/ssl4eo_50k.lmdb',
-        lmdb_file='/p/scratch/hai_ssl4eo/data/ssl4eo_s12/ssl4eo_250k_s2c_uint8.lmdb',
-        #s1_transform=TwoCropsTransform(train_transforms_s1),
-        #s2a_transform=TwoCropsTransform(train_transforms_s2a),
-        s2c_transform=TwoCropsTransform(train_transforms_s2c,season='augment'),
-        is_slurm_job=False,
-        #subset=True,
-        normalize = False,
-        mode = ['s2c'],
-        dtype='uint8'
-    )
-
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=4, num_workers=0)
-    print(len(train_dataset))
-    for i, (s2c) in enumerate(train_loader):
-        if i>1:
-            break
-        #print(s1[0].shape,s1[0].dtype, s2a[1].shape, s2a[1].dtype, s2c[0].shape,s2c[1].dtype)
-        print(s2c[0].shape,s2c[0].dtype,s2c[0].mean(), s2c[1].shape,s2c[1].dtype,s2c[1].mean())
-

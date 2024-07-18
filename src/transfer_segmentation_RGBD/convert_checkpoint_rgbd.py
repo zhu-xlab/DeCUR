@@ -1,5 +1,6 @@
 import torch
 
+### MITB2
 ckpt_path = 'mitb2_sunrgbd_rgb_hha_decur_ep200.pth'
 ckpt = torch.load(ckpt_path,map_location='cpu')
 
@@ -19,7 +20,11 @@ for k in list(state_dict.keys()):
     
 torch.save(state_dict1,'decur_mitb2_rgb.pth')
 torch.save(state_dict2,'decur_mitb2_hha.pth')
+
+
+
 '''
+### MITB5
 ckpt_path = 'mitb2_sunrgbd_rgb_hha_decur_ep200.pth.pth'
 ckpt = torch.load(ckpt_path,map_location='cpu')
 
