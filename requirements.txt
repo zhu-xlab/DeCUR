@@ -9,3 +9,4 @@ tqdm
 matplotlib
 opencv-torchvision-transforms-yuzhiyang
 torchmetrics
+kornia

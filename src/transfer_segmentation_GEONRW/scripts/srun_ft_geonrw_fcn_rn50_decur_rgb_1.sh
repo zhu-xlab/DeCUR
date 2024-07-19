@@ -46,5 +46,6 @@ srun python -u GeoNRW_RGB_FCN_RN50.py \
 --dist_url $dist_url \
 --pretrained /p/project/hai_dm4eo/wang_yi/ssl4eo-mm-v3/src/pretrain/checkpoints/geonrw/B3B1_lf2_bt_decu_rn50_cd384_prj8192/checkpoint_0099.pth \
 #--linear \
+#--rda \
 #--schedule 60 80 \
 #--resume /p/project/hai_ssl4eo/wang_yi/ssl4eo-s12-dataset/src/benchmark/fullset_temp/checkpoints/moco_lc/BE_rn50_10_r112/checkpoint_0009.pth.tar

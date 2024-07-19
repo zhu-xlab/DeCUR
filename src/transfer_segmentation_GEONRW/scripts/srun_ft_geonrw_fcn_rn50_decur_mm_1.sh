@@ -47,3 +47,4 @@ srun python -u GeoNRW_MM_FCN_RN50.py \
 --dist_url $dist_url \
 --pretrained /p/project/hai_dm4eo/wang_yi/decur/src/pretrain/checkpoints/geonrw/B3B1_lf2_bt_decu_rn50_cd384_prj8192/checkpoint_0099.pth \
 #--linear \
+#--rda \
