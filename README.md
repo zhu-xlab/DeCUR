@@ -5,7 +5,7 @@
   <img width="800" alt="decur main structure" src="assets/decur_eccv.png">
 </p>
 
-PyTorch implementation of [DeCUR]().
+PyTorch implementation of [DeCUR](https://arxiv.org/abs/2309.05300). *This is the camera-ready version for ECCV 2024; see the branch `decur-old` for the older version. The core design remains the same, with additional deformable attention for ConvNet backbones and more experiments.*
 
 
 ### Pretrained models
@@ -77,5 +77,10 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 
 ### Citation
 ```BibTeX
-TBD
+@article{wang2024decoupling,
+  title={Decoupling Common and Unique Representations for Multimodal Self-supervised Learning},
+  author={Yi Wang and Conrad M Albrecht and Nassim Ait Ali Braham and Chenying Liu and Zhitong Xiong and Xiao Xiang Zhu},
+  journal={arXiv preprint arXiv:2309.05300},
+  year={2024}
+}
 ```
