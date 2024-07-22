@@ -6,7 +6,7 @@
   <img width="500" alt="decur main structure" src="assets/decur_main_structure.png">
 </p>
 
-PyTorch implementation of [DeCUR](https://arxiv.org/abs/2309.05300).
+PyTorch implementation of [DeCUR](https://arxiv.org/abs/2309.05300v1).
 
 
 ### Pretrained models
