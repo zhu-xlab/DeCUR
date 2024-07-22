@@ -5,7 +5,7 @@
   <img width="800" alt="decur main structure" src="assets/decur_eccv.png">
 </p>
 
-PyTorch implementation of [DeCUR](https://arxiv.org/abs/2309.05300). *This is the camera-ready version for ECCV 2024; see the branch `decur-old` for the older version. The core design remains the same, with additional deformable attention for ConvNet backbones and more experiments.*
+PyTorch implementation of [DeCUR](https://arxiv.org/abs/2309.05300). *This is the accepted version for ECCV 2024; see the branch `decur-old` for the older version. The core design remains the same, with additional deformable attention for ConvNet backbones and more experiments.*
 
 
 ### Pretrained models
