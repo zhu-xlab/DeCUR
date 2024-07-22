@@ -1,0 +1,7 @@
+**/.ipynb_checkpoints/*
+**/.vscode/*
+**/__pycache__/*
+**/srun_outputs/*
+**/checkpoints/*
+src/pretrain/utils/*.ipynb
+src/transfer_segmentation_GEONRW/

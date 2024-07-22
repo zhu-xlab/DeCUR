@@ -8,25 +8,25 @@ import time
 import os
 import math
 import pdb
-from sklearn.metrics import average_precision_score, precision_score, recall_score, f1_score
+#from sklearn.metrics import average_precision_score, precision_score, recall_score, f1_score
 from torchmetrics.functional.classification import multilabel_average_precision, multilabel_f1_score
 import numpy as np
 import argparse
 import builtins
 
+#from datasets.BigEarthNet.bigearthnet_dataset_seco import Bigearthnet
 #from datasets.BigEarthNet.bigearthnet_dataset_lmdb_s2_uint8 import LMDBDataset,random_subset
 from datasets.BigEarthNet.bigearthnet_dataset_lmdb_B14 import LMDBDataset, random_subset
 
 from torch.utils.tensorboard import SummaryWriter
+import timm
 
 parser = argparse.ArgumentParser()
 #parser.add_argument('--data_dir', type=str, default='/mnt/d/codes/SSL_examples/datasets/BigEarthNet')
 parser.add_argument('--lmdb_dir', type=str, default='/mnt/d/codes/SSL_examples/datasets/BigEarthNet/dataload_op1_lmdb')
 parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/resnet/')
 parser.add_argument('--resume', type=str, default='')
-#parser.add_argument('--save_path', type=str, default='./checkpoints/bigearthnet_s2_B12_100_no_pretrain_resnet50.pt')
 
-#parser.add_argument('--bands', type=str, default='all', choices=['all','RGB'], help='bands to process')  
 parser.add_argument('--train_frac', type=float, default=1.0)
 parser.add_argument('--backbone', type=str, default='resnet50')
 parser.add_argument('--batchsize', type=int, default=256)
@@ -38,6 +38,7 @@ parser.add_argument('--schedule', default=[60, 80], nargs='*', type=int,
 parser.add_argument('--cos', action='store_true', help='use cosine lr schedule')
 parser.add_argument('--seed', type=int, default=42)
 parser.add_argument('--pretrained', default='', type=str, help='path to moco pretrained checkpoint')
+parser.add_argument('--weight_decay', default=0, type=float, help='weight decay')
 
 ### distributed running ###
 parser.add_argument('--dist_url', default='env://', type=str)
@@ -49,11 +50,12 @@ parser.add_argument("--rank", default=0, type=int, help="""rank of this process:
 parser.add_argument("--local_rank", default=0, type=int,
                     help="this argument is not used and should be ignored")
 
+# mode options
 parser.add_argument('--normalize',action='store_true',default=False)
 parser.add_argument('--linear',action='store_true',default=False)
-
 parser.add_argument('--mode', nargs='*', default=['s1','s2'], help='bands to process')
 parser.add_argument('--test',action='store_true',default=False)
+
 
 def init_distributed_mode(args):
 
@@ -104,20 +106,40 @@ def adjust_learning_rate(optimizer, epoch, args):
         param_group['lr'] = lr
 
 class LateFusionModel(torch.nn.Module):
-    def __init__(self):
+    def __init__(self,da=False):
         super().__init__()
-        self.net1 = models.resnet50(pretrained=False)
-        self.net1.conv1 = torch.nn.Conv2d(2, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-        self.net1.fc = torch.nn.Identity()
-        self.net2 = models.resnet50(pretrained=False)
-        self.net2.conv1 = torch.nn.Conv2d(13, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-        self.net2.fc = torch.nn.Identity() 
-        self.ffc = torch.nn.Linear(4096,19)       
+
+        self.net1 = timm.create_model('vit_small_patch16_224',pretrained=False)
+        self.net1.patch_embed.proj = torch.nn.Conv2d(2, 384, kernel_size=(16, 16), stride=(16, 16))
+        self.net1.head = torch.nn.Identity()
+        self.net2 = timm.create_model('vit_small_patch16_224',pretrained=False)
+        self.net2.patch_embed.proj = torch.nn.Conv2d(13, 384, kernel_size=(16, 16), stride=(16, 16))
+        self.net2.head = torch.nn.Identity()
+
+        self.ffc = torch.nn.Linear(768,19)    
+
     def forward(self,s1,s2):
         z1 = self.net1(s1)
         z2 = self.net2(s2)
         z12 = torch.cat((z1,z2),-1)
         return self.ffc(z12)
+
+
+class SingleModel(torch.nn.Module):
+    def __init__(self,n_channels=2,n_classes=19):
+        super().__init__()
+
+        self.n_channels = n_channels
+
+        self.backbone = timm.create_model('vit_small_patch16_224',pretrained=False)
+        self.backbone.patch_embed.proj = torch.nn.Conv2d(n_channels, 384, kernel_size=(16, 16), stride=(16, 16))
+        self.backbone.head = torch.nn.Linear(384,n_classes)
+
+    def forward(self,s1):
+        return self.backbone(s1)
+
+
+
 
 def main():
 
@@ -150,6 +172,7 @@ def main():
     train_transforms = cvtransforms.Compose([
             cvtransforms.RandomResizedCrop(224,scale=(0.8,1.0)), # multilabel, avoid cropping out labels
             cvtransforms.RandomHorizontalFlip(),
+            cvtransforms.RandomVerticalFlip(),
             cvtransforms.ToTensor()])
 
     val_transforms = cvtransforms.Compose([
@@ -195,31 +218,31 @@ def main():
     print('train_len: %d val_len: %d' % (len(train_dataset),len(val_dataset)))
 
     ## change 04 ##
-    if args.backbone == 'resnet50':
+    if args.backbone == 'vits16':
         if args.mode==['s1']:
-            net = models.resnet50(pretrained=False)
-            net.conv1 = torch.nn.Conv2d(2, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            net.fc = torch.nn.Linear(2048,19)
+            net = SingleModel(n_channels=2,n_classes=19)
+            net.backbone.head.weight.data.normal_(mean=0.0,std=0.01)
+            net.backbone.head.bias.data.zero_()   
         if args.mode==['s2']:
-            net = models.resnet50(pretrained=False)
-            net.conv1 = torch.nn.Conv2d(13, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            net.fc = torch.nn.Linear(2048,19)
+            net = SingleModel(n_channels=13,n_classes=19)
+            net.backbone.head.weight.data.normal_(mean=0.0,std=0.01)
+            net.backbone.head.bias.data.zero_()
         if args.mode==['s1','s2']:
-            net = LateFusionModel()            
-            
+            net = LateFusionModel(args.da)            
+            net.ffc.weight.data.normal_(mean=0.0,std=0.01)
+            net.ffc.bias.data.zero_() 
     if args.linear:
         if args.mode==['s1'] or args.mode==['s2']:
             for name, param in net.named_parameters():
-                if name not in ['fc.weight','fc.bias']:
+                if name not in ['backbone.head.weight','backbone.head.bias']:
                     param.requires_grad = False
-            net.fc.weight.data.normal_(mean=0.0,std=0.01)
-            net.fc.bias.data.zero_()    
+            net.backbone.head.weight.data.normal_(mean=0.0,std=0.01)
+            net.backbone.head.bias.data.zero_()    
         if args.mode==['s1','s2']:
             for name, param in net.named_parameters():
                 if name not in ['ffc.weight','ffc.bias']:
                     param.requires_grad = False
-            net.ffc.weight.data.normal_(mean=0.0,std=0.01)
-            net.ffc.bias.data.zero_()            
+           
 
     # load from pre-trained, before DistributedDataParallel constructor
     if args.pretrained:
@@ -227,33 +250,24 @@ def main():
             print("=> loading checkpoint '{}'".format(args.pretrained))
             if args.mode==['s1']:
                 checkpoint1 = torch.load(args.pretrained, map_location="cpu")
-                state_dict1 = checkpoint1['model']
-                for k in list(state_dict1.keys()):
-                    # retain only encoder up to before the embedding layer
-                    if k.startswith('module.backbone_1') and not k.startswith('module.backbone_1.fc'):
-                        # remove prefix
-                        state_dict1[k[len("module.backbone_1."):]] = state_dict1[k]
-                    # delete renamed or unused k
-                    del state_dict1[k]
+                state_dict1 = checkpoint1['model'] if 'model' in checkpoint1 else checkpoint1
+                state_dict1 = {k.replace("module.backbone_1", "backbone"): v for k,v in state_dict1.items()}
+                state_dict1 = {k.replace("module.", ""): v for k,v in state_dict1.items()}
                 msg1 = net.load_state_dict(state_dict1, strict=False)
-                assert set(msg1.missing_keys) == {"fc.weight", "fc.bias"}            
+                assert set(msg1.missing_keys) == {"backbone.head.weight", "backbone.head.bias"}            
             if args.mode==['s2']:
                 checkpoint2 = torch.load(args.pretrained, map_location="cpu")
-                state_dict2 = checkpoint2['model']
-                for k in list(state_dict2.keys()):
-                    # retain only encoder up to before the embedding layer
-                    if k.startswith('module.backbone_2') and not k.startswith('module.backbone_2.fc'):
-                        # remove prefix
-                        state_dict2[k[len("module.backbone_2."):]] = state_dict2[k]
-                    # delete renamed or unused k
-                    del state_dict2[k]
+                state_dict2 = checkpoint2['model'] if 'model' in checkpoint2 else checkpoint2
+                state_dict2 = {k.replace("module.backbone_2", "backbone"): v for k,v in state_dict2.items()}
+                state_dict2 = {k.replace("module.", ""): v for k,v in state_dict2.items()}
                 msg2 = net.load_state_dict(state_dict2, strict=False)                       
-                assert set(msg2.missing_keys) == {"fc.weight", "fc.bias"}
+                assert set(msg2.missing_keys) == {"backbone.head.weight", "backbone.head.bias"}
             if args.mode==['s1','s2']:
                 checkpoint = torch.load(args.pretrained, map_location="cpu")
-                state_dict = checkpoint['model']
+                state_dict = checkpoint['model'] if 'model' in checkpoint else checkpoint
                 state_dict = {k.replace("module.backbone_1", "net1"): v for k,v in state_dict.items()}
                 state_dict = {k.replace("module.backbone_2", "net2"): v for k,v in state_dict.items()}
+                state_dict = {k.replace("module.", ""): v for k,v in state_dict.items()}
                 msg = net.load_state_dict(state_dict, strict=False)                       
                 assert set(msg.missing_keys) == {"ffc.weight", "ffc.bias"}            
             print("=> loaded pre-trained model '{}'".format(args.pretrained))
@@ -269,7 +283,7 @@ def main():
         net.cuda()                
     criterion = torch.nn.MultiLabelSoftMarginLoss()
     optimizer = torch.optim.SGD(net.parameters(), lr=args.lr, momentum=0.9)
-    # optimizer = torch.optim.adamw(net.parameters(),lr=args.lr)
+    #optimizer = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
 
     last_epoch = 0
@@ -317,10 +331,7 @@ def main():
                 else:
                     outputs_val = net(inputs_val)
                     
-                loss_val = criterion(outputs_val, labels_val.long())
-                #pdb.set_trace()
-                #score_val = torch.sigmoid(outputs_val).detach().cpu()
-                #average_precision_val = average_precision_score(labels_val.cpu(), score_val, average='micro') * 100.0   
+                loss_val = criterion(outputs_val, labels_val.long()) 
                 score = torch.sigmoid(outputs_val).detach()
                 average_precision_micro = multilabel_average_precision(score, labels_val, num_labels=19, average="micro")
                 average_precision_macro = multilabel_average_precision(score, labels_val, num_labels=19, average="macro")
@@ -339,6 +350,7 @@ def main():
         
     else:
         print('Start training...')
+        st_time = time.time()
         for epoch in range(last_epoch,epochs):
     
             net.train()
@@ -388,14 +400,13 @@ def main():
                 optimizer.step()
                 train_time = time.time()-end-data_time
     
-                #score = torch.sigmoid(outputs).detach().cpu()
-                #average_precision = average_precision_score(labels.cpu(), score, average='micro') * 100.0
                 score = torch.sigmoid(outputs).detach()
                 average_precision_micro = multilabel_average_precision(score, labels, num_labels=19, average="micro")
                 #average_precision_macro = multilabel_average_precision(score, labels, num_labels=19, average="macro")
                 #f1_micro = multilabel_f1_score(score, labels, num_labels=19, average="micro")
                 #f1_macro = multilabel_f1_score(score, labels, num_labels=19, average="macro")
-                    
+
+
                 score_time = time.time()-end-data_time-train_time
                 
                 # print statistics
@@ -425,7 +436,7 @@ def main():
                     sum_tt = 0.0
                     sum_st = 0.0
     
-            if epoch % 5 == 4:
+            if epoch % 10 == 9: # evaluate every 10 epochs to save time
                 running_loss_val = 0.0
                 running_acc_val = 0.0
                 count_val = 0
@@ -454,8 +465,6 @@ def main():
                             outputs_val = net(inputs_val)
                             
                         loss_val = criterion(outputs_val, labels_val.long())
-                        #score_val = torch.sigmoid(outputs_val).detach().cpu()
-                        #average_precision_val = average_precision_score(labels_val.cpu(), score_val, average='micro') * 100.0   
                         score = torch.sigmoid(outputs_val).detach()
                         average_precision_micro = multilabel_average_precision(score, labels_val, num_labels=19, average="micro")
                         #average_precision_macro = multilabel_average_precision(score, labels, num_labels=19, average="macro")
@@ -479,7 +488,7 @@ def main():
             
                 
                 
-            if args.rank==0 and epoch % 5 == 4:
+            if args.rank==0 and epoch % 10 == 9:
                 torch.save({
                             'epoch': epoch,
                             'model_state_dict': net.state_dict(),
@@ -490,7 +499,7 @@ def main():
         #if args.rank==0:
         #    torch.save(net.state_dict(), save_path)
             
-        print('Training finished.')
+        print('Training finished. in %s seconds.' % (time.time()-st_time))
 
 
 

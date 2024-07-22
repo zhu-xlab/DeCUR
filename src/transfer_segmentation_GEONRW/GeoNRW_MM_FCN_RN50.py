@@ -3,13 +3,11 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import models
 
-## change01 ##
 from cvtorchvision import cvtransforms
 import time
 import os
 import math
 import pdb
-from sklearn.metrics import average_precision_score, precision_score, recall_score, f1_score
 import numpy as np
 import argparse
 import builtins
@@ -31,9 +29,7 @@ parser.add_argument('--mask', type=str, metavar='DIR',
                     help='path to dataset')                    
 parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/resnet/')
 parser.add_argument('--resume', type=str, default='')
-#parser.add_argument('--save_path', type=str, default='./checkpoints/bigearthnet_s2_B12_100_no_pretrain_resnet50.pt')
 
-#parser.add_argument('--bands', type=str, default='all', choices=['all','RGB'], help='bands to process')  
 parser.add_argument('--train_frac', type=float, default=1.0)
 parser.add_argument('--backbone', type=str, default='resnet50')
 parser.add_argument('--batchsize', type=int, default=256)
@@ -61,6 +57,7 @@ parser.add_argument('--linear',action='store_true',default=False)
 
 parser.add_argument('--mode', nargs='*', default=['RGB','DSM', 'mask'], help='bands to process')
 parser.add_argument('--test',action='store_true',default=False)
+parser.add_argument('--rda',action='store_true',default=False)
 
 def init_distributed_mode(args):
 
@@ -128,24 +125,6 @@ def main():
     if args.rank==0:
         tb_writer = SummaryWriter(os.path.join(args.checkpoints_dir,'log'))
 
-    '''
-    ## change03 ##
-    transforms_geometry = K.AugmentationSequential(
-        K.RandomResizedCrop((224, 224), scale=(0.5, 1.0), p=1.0),
-        K.RandomHorizontalFlip(p=0.5),
-        #K.RandomVerticalFlip(p=0.5),
-        #K.RandomRotation(degrees=45,resample=Resample.NEAREST, p=0.5),
-        #K.RandomAffine((-15., 20.), resample=Resample.NEAREST, p=0.5),
-    )
-    
-    transforms_color = K.AugmentationSequential(
-        #K.ColorJitter(0.4,0.4,0.4,0.4,p=0.5),
-        #K.RandomGrayscale(p=0.5),
-        K.RandomGaussianBlur((3,3),(0.1,2.0),p=0.01),
-    )
-    '''
-
-
 
     train_dataset = GeoNRWDataset(
         rgb_dir=os.path.join(args.data1,'train'),
@@ -190,13 +169,12 @@ def main():
     
     print('train_len: %d val_len: %d' % (len(train_dataset),len(val_dataset)))
 
-    ## change 04 ##
     if args.backbone == 'resnet50':
-        net = FCN_RN50()       
+        net = FCN_RN50(da=args.rda)       
             
     if args.linear:
         for name, param in net.named_parameters():
-            if 'backbone_1' in name or 'backbone_2' in name:
+            if 'backbone_1' in name or 'backbone_2' in name or 'da1' in name or 'da2' in name:
                 param.requires_grad = False           
 
     # load from pre-trained, before DistributedDataParallel constructor
@@ -205,9 +183,11 @@ def main():
             print("=> loading checkpoint '{}'".format(args.pretrained))
             checkpoint = torch.load(args.pretrained, map_location="cpu")
             state_dict = checkpoint['model']
-            state_dict = {k.replace("module.backbone_1", "backbone_1"): v for k,v in state_dict.items()}
-            state_dict = {k.replace("module.backbone_2", "backbone_2"): v for k,v in state_dict.items()}
-            msg = net.load_state_dict(state_dict, strict=False)                                   
+            #state_dict = {k.replace("module.backbone_1", "backbone_1"): v for k,v in state_dict.items()}
+            #state_dict = {k.replace("module.backbone_2", "backbone_2"): v for k,v in state_dict.items()}
+            state_dict = {k.replace("module.", ""): v for k,v in state_dict.items()}
+            msg = net.load_state_dict(state_dict, strict=False)    
+            print(msg)                               
             print("=> loaded pre-trained model '{}'".format(args.pretrained))
         else:
             print("=> no checkpoint found at '{}'".format(args.pretrained))
@@ -263,6 +243,7 @@ def main():
     #pdb.set_trace()
 
     print('Start training...')
+    st_time = time.time()
     for epoch in range(last_epoch,args.epochs):
 
         net.train()
@@ -286,6 +267,8 @@ def main():
         for i, data in enumerate(train_loader, 0):
             data_time = time.time()-end
 
+            check_time0 = time.time()
+
             inputs1, inputs2, labels = data[0].cuda(), data[1].cuda(), data[2].cuda()
                        
             # zero the parameter gradients
@@ -296,19 +279,23 @@ def main():
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
-            train_time = time.time()-end-data_time
+            train_time = time.time()-check_time0
             
-            
+            check_time1 = time.time()
             # print statistics
             train_miou = torchmetrics.functional.jaccard_index(torch.argmax(outputs,1).detach(), labels.detach(), task="multiclass", num_classes=11, ignore_index=0)
             train_acc = torchmetrics.functional.accuracy(torch.argmax(outputs,1).detach(), labels.detach(), task="multiclass", num_classes=11, ignore_index=0)
-            
+            train_miou = 0
+            train_acc = 0
             
             running_loss += loss.item()
+
+
             running_acc += train_acc
             running_miou += train_miou
-            
-            score_time = time.time()-end-data_time-train_time
+            #check_time2 = time.time()
+            #score_time = time.time()-end-data_time-train_time
+            score_time = time.time()-check_time1
             batch_time = time.time() - end
             end = time.time()        
             sum_bt += batch_time
@@ -372,7 +359,7 @@ def main():
         
             
             
-        if args.rank==0:
+        if epoch % 5 == 4 and args.rank==0:
             torch.save({
                         'epoch': epoch,
                         'model_state_dict': net.state_dict(),
@@ -383,23 +370,27 @@ def main():
     #if args.rank==0:
     #    torch.save(net.state_dict(), save_path)
         
-    print('Training finished.')
+    print('Training finished in %s seconds.' % (time.time()-st_time))
 
 
 
 class FCN_RN50(torch.nn.Module):
-    def __init__(self):
+    def __init__(self,da=False):
         super(FCN_RN50, self).__init__()
         # Get a resnet50 backbone
-        m1 = models.resnet50()
-        m2 = models.resnet50()
+
+        self.backbone_1 = models.resnet50()
+        self.backbone_2 = models.resnet50()
+
+        #m1 = models.resnet50()
+        #m2 = models.resnet50()
         # Extract 4 main layers
-        self.backbone_1 = create_feature_extractor(
-            m1, return_nodes={f'layer{k}': str(v)
-                             for v, k in enumerate([2, 3, 4])})
-        self.backbone_2 = create_feature_extractor(
-            m2, return_nodes={f'layer{k}': str(v)
-                             for v, k in enumerate([2, 3, 4])})
+        #self.backbone_1 = create_feature_extractor(
+        #    m1, return_nodes={f'layer{k}': str(v)
+        #                     for v, k in enumerate([2, 3, 4])})
+        #self.backbone_2 = create_feature_extractor(
+        #    m2, return_nodes={f'layer{k}': str(v)
+        #                     for v, k in enumerate([2, 3, 4])})
         self.uc0 = torch.nn.Conv2d(in_channels=1024, out_channels=128, kernel_size=1)
         self.uc1 = torch.nn.Conv2d(in_channels=2048, out_channels=256, kernel_size=1)
         self.uc2 = torch.nn.Conv2d(in_channels=4096, out_channels=512, kernel_size=1)
@@ -413,10 +404,46 @@ class FCN_RN50(torch.nn.Module):
         self.cls2 = torch.nn.Conv2d(in_channels=512, out_channels=11, kernel_size=1)
 
         #self.softmax = torch.nn.Softmax()
+        self.da = da
+        if self.da:
+            from models.dat.dat_blocks import DAttentionBaseline
+            self.da1_l3 = DAttentionBaseline(
+                q_size=(14,14), kv_size=(14,14), n_heads=8, n_head_channels=128, n_groups=4,
+                attn_drop=0, proj_drop=0, stride=2, 
+                offset_range_factor=-1, use_pe=True, dwc_pe=False,
+                no_off=False, fixed_pe=False, ksize=5, log_cpb=False
+            )
+
+            self.da1_l4 = DAttentionBaseline(
+                q_size=(7,7), kv_size=(7,7), n_heads=16, n_head_channels=128, n_groups=8,
+                attn_drop=0, proj_drop=0, stride=1, 
+                offset_range_factor=-1, use_pe=True, dwc_pe=False,
+                no_off=False, fixed_pe=False, ksize=3, log_cpb=False
+            )
+
+            self.da2_l3 = DAttentionBaseline(
+                q_size=(14,14), kv_size=(14,14), n_heads=8, n_head_channels=128, n_groups=4,
+                attn_drop=0, proj_drop=0, stride=2, 
+                offset_range_factor=-1, use_pe=True, dwc_pe=False,
+                no_off=False, fixed_pe=False, ksize=5, log_cpb=False
+            )
+
+            self.da2_l4 = DAttentionBaseline(
+                q_size=(7,7), kv_size=(7,7), n_heads=16, n_head_channels=128, n_groups=8,
+                attn_drop=0, proj_drop=0, stride=1, 
+                offset_range_factor=-1, use_pe=True, dwc_pe=False,
+                no_off=False, fixed_pe=False, ksize=3, log_cpb=False
+            )
+        else:
+            self.da1_l3 = None
+            self.da1_l4 = None
+            self.da2_l3 = None
+            self.da2_l4 = None
 
     def forward(self, x1,x2):
-        x1 = self.backbone_1(x1)
-        x2 = self.backbone_2(x2)
+
+        x1 = self.forward_backbone(x1, self.backbone_1, self.da1_l3, self.da1_l4)
+        x2 = self.forward_backbone(x2, self.backbone_2, self.da2_l3, self.da2_l4)
         #pdb.set_trace()
         x12 = {}
         for key in x1.keys():
@@ -428,10 +455,35 @@ class FCN_RN50(torch.nn.Module):
         y = y0 + y1 + y2
 
         #y = self.softmax(y)
-
-
         #x = self.fpn(x)
         return y
+    
+    def forward_backbone(self, x, backbone, da_l3, da_l4):
+        #x1 = self.backbone_1(x1) # '0': (512,28,28), '1': (1024,14,14), '2': (2048,7,7)
+        x = backbone.conv1(x)
+        x = backbone.bn1(x)
+        x = backbone.relu(x)
+        x = backbone.maxpool(x)
+
+        x = backbone.layer1(x)
+        x2_out = backbone.layer2(x)
+
+        x3 = backbone.layer3(x2_out)
+        if da_l3 is not None:
+            x3_da,pos1,ref1 = da_l3(x3) # deformable attention
+            x3_out = x3 + x3_da # residual
+        else:
+            x3_out = x3
+        x4 = backbone.layer4(x3_out)
+        if da_l4 is not None:
+            x4_da,pos2,ref2 = da_l4(x4) # deformable attention
+            x4_out = x4 + x4_da
+        else:
+            x4_out = x4
+
+        return {'0': x2_out, '1': x3_out, '2': x4_out}
+
+
 
 
 if __name__ == "__main__":

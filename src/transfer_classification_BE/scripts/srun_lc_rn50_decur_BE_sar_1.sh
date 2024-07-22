@@ -4,10 +4,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=4
-#SBATCH --output=srun_outputs/BE_mm_LC_rn50_decur_1_%j.out
-#SBATCH --error=srun_outputs/BE_mm_LC_rn50_decur_1_%j.err
-#SBATCH --time=02:00:00
-#SBATCH --job-name=BE_LC_mm
+#SBATCH --output=srun_outputs/BE_s1_LC_rn50_decur_1_%j.out
+#SBATCH --error=srun_outputs/BE_s1_LC_rn50_decur_1_%j.err
+#SBATCH --time=01:00:00
+#SBATCH --job-name=BE_LC_s1
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=10
 #SBATCH --partition=booster
@@ -31,10 +31,10 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK}
 
 # run script as slurm job
-srun python -u linear_BE.py \
+srun python -u linear_BE_resnet.py \
 --lmdb_dir /p/project/hai_dm4eo/wang_yi/data/BigEarthNet/ \
---mode s1 s2 \
---checkpoints_dir /p/project/hai_dm4eo/wang_yi/decur/src/transfer_classification/checkpoints/BE_mm_LC_rn50_decur_1 \
+--mode s1 \
+--checkpoints_dir /p/project/hai_dm4eo/wang_yi/decur/src/transfer_classification/checkpoints/BE_s1_LC_rn50_decur_1 \
 --backbone resnet50 \
 --train_frac 0.01 \
 --batchsize 64 \
@@ -45,4 +45,5 @@ srun python -u linear_BE.py \
 --seed 42 \
 --dist_url $dist_url \
 --linear \
---pretrained /p/project/hai_dm4eo/wang_yi/decur/src/pretrain/checkpoints/late_fusion_2p2/B2B13_bt_decu_rn50_prj8192/checkpoint_0099.pth \
+--pretrained /p/project/hai_dm4eo/wang_yi/decur/src/pretrain/checkpoints/rn50_ssl4eo-s12_joint_decur_ep100.pth \
+#--rda \

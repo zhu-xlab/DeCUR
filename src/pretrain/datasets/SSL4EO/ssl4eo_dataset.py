@@ -20,7 +20,7 @@ ALL_BANDS_S1_GRD = ['VV','VH']
 
 
 ### band statistics: mean & std
-# calculated from 50k data
+# calculated from 50k data, very similar to full data
 S1_MEAN = [-12.54847273, -20.19237134]
 S1_STD = [5.25697717, 5.91150917]
 
@@ -195,6 +195,8 @@ def make_lmdb(dataset, lmdb_file, num_workers=6,mode=['s1','s2a','s2c']):
             
         if mode==['s1','s2a','s2c']:
             obj = (sample_s1.tobytes(), sample_s1.shape, sample_s2a.tobytes(), sample_s2a.shape, sample_s2c.tobytes(), sample_s2c.shape)
+        elif mode==['s1','s2c']:
+            obj = (sample_s1.tobytes(), sample_s1.shape, sample_s2c.tobytes(), sample_s2c.shape)
         elif mode==['s1']:
             obj = (sample_s1.tobytes(), sample_s1.shape)
         elif mode==['s2a']:
@@ -237,7 +239,10 @@ if __name__ == '__main__':
         if os.path.isdir(args.save_path):
             shutil.rmtree(args.save_path)        
         train_dataset = SSL4EO(root=args.root, normalize=args.normalize, mode=args.mode, dtype=args.dtype)
-        train_subset = random_subset(train_dataset,frac=args.frac,seed=42)
+        if args.frac<1.0:
+            train_subset = random_subset(train_dataset,frac=args.frac,seed=42)
+        else:
+            train_subset = train_dataset
 
         make_lmdb(train_subset,args.save_path,num_workers=args.num_workers,mode=args.mode)
 

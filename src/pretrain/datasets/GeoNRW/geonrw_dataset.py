@@ -60,7 +60,9 @@ class GeoNRWDataset(Dataset):
         dsm = np.expand_dims(np.array(Image.open(dsm_path)),-1)
         p1,p99 = np.percentile(dsm,(1,99))
         dsm = np.clip(dsm,p1,p99)
-        dsm = (dsm - p1) / (p99-p1+1e-5)
+        dsm = (dsm - p1) / (p99-p1+1e-5) * 255
+        dsm = dsm.astype(np.uint8)
+
         
         if self.dsm_transform is not None:
             dsm = self.dsm_transform(dsm)  

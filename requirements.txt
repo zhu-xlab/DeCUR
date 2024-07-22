@@ -1,0 +1,12 @@
+pytorch==1.11.0 
+torchvision==0.12.0
+tensorboard
+diffdist
+rasterio
+timm
+einops
+tqdm
+matplotlib
+opencv-torchvision-transforms-yuzhiyang
+torchmetrics
+kornia
