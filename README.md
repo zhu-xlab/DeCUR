@@ -5,7 +5,7 @@
   <img width="800" alt="decur main structure" src="assets/decur_eccv.png">
 </p>
 
-PyTorch implementation of [DeCUR](https://arxiv.org/abs/2309.05300). *This is the accepted version for ECCV 2024; see the branch `decur-old` for the older version. The core design remains the same, with additional deformable attention for ConvNet backbones and more experiments.*
+PyTorch implementation of [DeCUR](https://arxiv.org/abs/2309.05300). **The main branch includes the up-to-date version for [ECCV 2024 (oral)](https://arxiv.org/abs/2309.05300v3); for special interests, the `decur-old` branch backs up [the older version](https://arxiv.org/abs/2309.05300v1). While the core design remains the same, we added additional deformable attention for ConvNet backbones, more experiments, and more analysis.*
 
 
 ### Pretrained models
@@ -77,10 +77,18 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 
 ### Citation
 ```BibTeX
+% for this version
 @article{wang2024decoupling,
   title={Decoupling Common and Unique Representations for Multimodal Self-supervised Learning},
-  author={Yi Wang and Conrad M Albrecht and Nassim Ait Ali Braham and Chenying Liu and Zhitong Xiong and Xiao Xiang Zhu},
+  author={Wang, Yi and Albrecht, Conrad M and Braham, Nassim Ait Ali and Liu, Chenying and Xiong, Zhitong and Zhu, Xiao Xiang},
   journal={arXiv preprint arXiv:2309.05300},
   year={2024}
+}
+% for the older version
+@article{wang2023decur,
+  title={DeCUR: decoupling common \& unique representations for multimodal self-supervision},
+  author={Wang, Yi and Albrecht, Conrad M and Braham, Nassim Ait Ali and Liu, Chenying and Xiong, Zhitong and Zhu, Xiao Xiang},
+  journal={arXiv preprint arXiv:2309.05300},
+  year={2023}
 }
 ```
